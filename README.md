@@ -24,7 +24,7 @@ It allows researchers to deploy interactive single-cell visualization dashboards
 
 ### 1. Build Docker image
 ```bash
-docker build -t shinycell2 .
+docker build -t shinycell2 -f Dockfile_new .
 
 
 
