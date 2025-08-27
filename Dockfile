@@ -34,9 +34,6 @@ RUN R -e "reqPkg = c('shinyhelper','data.table','Matrix','DT','magrittr','ggplot
 RUN R -e "install.packages('Seurat')"
 # RUN R -e "install.packages('Signac', repos='https://cran.rstudio.com/')"
 
-# Python anndata
-RUN pip3 install --no-cache-dir anndata
-
 # Install devtools + ShinyCell2
 RUN R -e "install.packages('devtools')"
 RUN R -e "devtools::install_github('the-ouyang-lab/ShinyCell2')"
