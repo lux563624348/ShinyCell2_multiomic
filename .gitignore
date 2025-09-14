@@ -1,2 +1,4 @@
 data/*
+with_rstudio/data/*
 !data/.gitkeep
+
