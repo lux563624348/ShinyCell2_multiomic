@@ -160,22 +160,23 @@ def main() -> None:
     # Iterate over nonzeros    ## final output
     coo = mat.tocoo()
     
-    limit = 100000
+    
     n_written = 0
-    stop = False
+    #limit = 100000
+    #stop = False
     with out_path.open("a") as f:
         for c, r, v in zip(coo.row, coo.col, coo.data):
             v = int(v)
             if v <= 0:
                 continue
             else:
-                f.write(f"{chrom[r]}\t{start[r]}\t{start[r]+500}\t{cells[c]}\t{v}\n")
-                n_written += 1
-                if n_written >= limit:
-                        stop = True
-                        break
-            if stop:
-                break
+                f.write(f"{chrom[r]}\t{start[r]}\t{start[r]+500}\t{cells[c]}\t{v}\n")    
+                #n_written += 1
+                #if n_written >= limit:
+                #        stop = True
+                #        break
+           # if stop:
+           #     break
 
     print(f"Wrote {n_written} fragments to {out_path}")
 
