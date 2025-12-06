@@ -18,6 +18,10 @@ import numpy as np
 import scipy.sparse as sp
 
 
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Expand an ATAC-by-bin matrix into a pseudo fragment table."
@@ -39,7 +43,7 @@ def parse_args() -> argparse.Namespace:
 def _require_cmd(name: str):
     if shutil.which(name) is None:
         raise RuntimeError(
-            f"Required command '{name}' not found. Install htslib/samtools for bgzip/tabix."
+            f"Required command '{name}' not found. Install htslib/samtools."
         )
 
 
@@ -61,67 +65,101 @@ def _bgzip_and_tabix(src: Path, dest: Path):
     src.unlink(missing_ok=True)
 
 
+# ------------------ chromosome + coordinate cleaners ------------------
+
+def clean_chr(x: str) -> str:
+    """Normalize chromosome labels robustly."""
+    x = str(x).strip()
+
+    # remove double-prefix
+    x = re.sub(r"^chrchr", "chr", x)
+
+    if x.startswith("chr"):
+        return x
+
+    # pure numeric → chr##
+    if x.isdigit():
+        return f"chr{x}"
+
+    # capture leading number
+    m = re.match(r"(\d+)", x)
+    if m:
+        return f"chr{m.group(1)}"
+
+    return "chrUn"
+
+
+def extract_int(x: str) -> int:
+    """Extract safe integer start coordinate."""
+    try:
+        return max(0, int(float(x)))
+    except Exception:
+        m = re.search(r"[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", str(x))
+        if m:
+            return max(0, int(float(m.group(0))))
+        return 0
+
+
 def _to_int_array(values):
-    """Convert to int with float()+regex fallback to handle scientific notation."""
-    def _to_int(x):
-        try:
-            return int(float(x))
-        except Exception:
-            match = re.search(
-                r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?",
-                str(x),
-            )
-            if match:
-                return int(float(match.group(0)))
-            raise
+    return np.array([extract_int(v) for v in values], dtype=np.int64)
 
-    arr = np.asarray(values, dtype=object)
-    return np.array([_to_int(v) for v in arr], dtype=np.int64)
 
+# ----------------------------------------------------------------------
+# Modality and bin loading
+# ----------------------------------------------------------------------
 
 def pick_modality(mdata, override: str | None):
-    candidates = ["atac_cell_by_bin"]
     if override:
-        candidates = [override]
-    for key in candidates:
-        if key in mdata.mod:
-            return mdata.mod[key]
+        if override in mdata.mod:
+            return mdata.mod[override]
+        raise ValueError(f"Modality '{override}' not found.")
+    if "atac_cell_by_bin" in mdata.mod:
+        return mdata.mod["atac_cell_by_bin"]
     return next(iter(mdata.mod.values()))
 
 
 def load_correct_bins(adata):
     var = adata.var
 
-    # --- Case 1: interval column "chr start end" ---
+    # Case 1: interval column exists
     if "interval" in var.columns:
         intervals = var["interval"].astype(str).to_numpy()
         parts = np.array([s.split() for s in intervals])
-        chrom = parts[:, 0]
+        chrom = np.array([clean_chr(x) for x in parts[:, 0]], dtype=object)
         start = _to_int_array(parts[:, 1])
         end = _to_int_array(parts[:, 2])
         return chrom, start, end
 
-    # --- Case 2: chrom + start (+ end) columns exist ---
+    # Case 2: explicit chrom/start/end columns
     if "chrom" in var.columns and "start" in var.columns:
-        chrom = var["chrom"].astype(str).to_numpy()
+        chrom = np.array([clean_chr(x) for x in var["chrom"].astype(str)], dtype=object)
         start = _to_int_array(var["start"].to_numpy())
         if "end" in var.columns:
             end = _to_int_array(var["end"].to_numpy())
         else:
-            end = start + 499
+            end = start + 500
         return chrom, start, end
 
-    # --- Case 3: fallback → parse var_names: "chr start end" ---
+    # Case 3: fallback parse var_names
     names = adata.var_names.astype(str)
     parts = np.array([s.split() for s in names])
-    if parts.shape[1] < 3:
-        raise ValueError("Cannot parse bin coordinates from var_names.")
 
-    chrom = parts[:, 0]
+    if parts.shape[1] < 3:
+        raise ValueError(
+            "Cannot parse chrom/start/end from var_names. "
+            "Need at least 'chrom start end'"
+        )
+
+    chrom = np.array([clean_chr(x) for x in parts[:, 0]], dtype=object)
     start = _to_int_array(parts[:, 2])
-    end = start + 499
+    end = start + 500
+
     return chrom, start, end
 
+
+# ----------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------
 
 def main():
     args = parse_args()
@@ -129,12 +167,13 @@ def main():
     h5mu_path = Path(args.h5mu)
     out_path = Path(args.out)
 
-    # Normalize output to .gz/.bgz
+    # enforce .gz or .bgz
     if out_path.suffix not in {".gz", ".bgz"}:
         gz_path = out_path.with_suffix(out_path.suffix + ".gz")
-        print(f"Output will be bgzip-compressed to {gz_path} (requested {out_path}).")
+        print(f"Output will be bgzip-compressed as {gz_path}")
     else:
         gz_path = out_path
+
     gz_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = gz_path.with_name(gz_path.name + ".tmp")
 
@@ -143,29 +182,42 @@ def main():
     adata = pick_modality(mdata, args.modality)
     print(f"Selected modality with {adata.n_obs} cells and {adata.n_vars} bins.")
 
-    # counts matrix
+    # matrix
     mat = adata.layers.get("counts", adata.X)
     if not sp.issparse(mat):
         mat = sp.csr_matrix(mat)
+
     coo = mat.tocoo()
 
     chrom, start, end = load_correct_bins(adata)
     cells = adata.obs_names.to_numpy()
 
-    print(f"Writing fragments to temporary file: {tmp_path}")
-    n_written = 0
-    with tmp_path.open("w") as f:
-        for r, c, v in zip(coo.row, coo.col, coo.data):
-            v = int(v)
-            if v <= 0:
-                continue
-            # matrix is cells x bins: row -> cell, col -> bin
-            f.write(f"{chrom[c]}\t{start[c]}\t{end[c]}\t{cells[r]}\t{v}\n")
-            n_written += 1
+    print("Building fragment rows in memory for sorting ...")
+    rows = []
+    for r, c, v in zip(coo.row, coo.col, coo.data):
+        v = int(v)
+        if v > 0:
+            rows.append((chrom[c], start[c], end[c], cells[r], v))
 
-    print(f"Done. Wrote {n_written} fragments. Compressing and indexing ...")
+    rows = np.array(rows, dtype=object)
+
+    print("Sorting fragments by chrom/start/end for tabix ...")
+    order = np.lexsort((
+        rows[:, 2].astype(np.int64),  # end
+        rows[:, 1].astype(np.int64),  # start
+        rows[:, 0],                  # chrom
+    ))
+    rows = rows[order]
+
+    print(f"Writing {rows.shape[0]} fragments → {tmp_path}")
+    with tmp_path.open("w") as f:
+        for chr_, s, e, cell, v in rows:
+            f.write(f"{chr_}\t{s}\t{e}\t{cell}\t{v}\n")
+
+    print("Compressing + indexing ...")
     _bgzip_and_tabix(tmp_path, gz_path)
-    print(f"Finished. Compressed file: {gz_path} (index: {gz_path}.tbi)")
+
+    print(f"Done: {gz_path} (index: {gz_path}.tbi)")
 
 
 if __name__ == "__main__":
