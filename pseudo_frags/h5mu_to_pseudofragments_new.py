@@ -104,6 +104,37 @@ def _to_int_array(values):
     return np.array([extract_int(v) for v in values], dtype=np.int64)
 
 
+def _parse_var_name(name: str):
+    """Best-effort parsing of a var name into (chrom, start, end_or_None)."""
+    # common pattern: chr1:0-500 or 1:0-500
+    m = re.match(r"^([^:]+)[: ]+([0-9eE.+-]+)[-: ]+([0-9eE.+-]+)", name)
+    if m:
+        return clean_chr(m.group(1)), m.group(2), m.group(3)
+
+    # whitespace separated; take the last three tokens to be robust to prefixes
+    tokens = name.replace(",", " ").split()
+    if len(tokens) >= 3:
+        chrom_tok, start_tok, end_tok = tokens[-3], tokens[-2], tokens[-1]
+        return clean_chr(chrom_tok), start_tok, end_tok
+
+    if len(tokens) == 2:  # chrom + start only; synthesize end later
+        chrom_tok, start_tok = tokens
+        return clean_chr(chrom_tok), start_tok, None
+
+    return None
+
+
+def _mod_has_bin_metadata(adata) -> bool:
+    var = adata.var
+    if "interval" in var.columns:
+        return True
+    if "chrom" in var.columns and "start" in var.columns:
+        return True
+    # sample a handful of var_names to see if they look like coordinates
+    sample = [str(x) for x in adata.var_names[: min(50, adata.n_vars)]]
+    return any(_parse_var_name(s) for s in sample)
+
+
 # ----------------------------------------------------------------------
 # Modality and bin loading
 # ----------------------------------------------------------------------
@@ -115,6 +146,10 @@ def pick_modality(mdata, override: str | None):
         raise ValueError(f"Modality '{override}' not found.")
     if "atac_cell_by_bin" in mdata.mod:
         return mdata.mod["atac_cell_by_bin"]
+    for key, ad in mdata.mod.items():
+        if _mod_has_bin_metadata(ad):
+            print(f"Auto-selected modality '{key}' with bin coordinates.")
+            return ad
     return next(iter(mdata.mod.values()))
 
 
@@ -141,31 +176,14 @@ def load_correct_bins(adata):
         return chrom, start, end
 
     # Case 3: fallback parse var_names
-    def _parse_var_name(name: str):
-        # common pattern: chr1:0-500 or 1:0-500
-        m = re.match(r"^([^:]+)[: ]+([0-9eE.+-]+)[-: ]+([0-9eE.+-]+)", name)
-        if m:
-            return clean_chr(m.group(1)), m.group(2), m.group(3)
-
-        # whitespace separated; take the last three tokens to be robust to prefixes
-        tokens = name.replace(",", " ").split()
-        if len(tokens) >= 3:
-            chrom_tok, start_tok, end_tok = tokens[-3], tokens[-2], tokens[-1]
-            return clean_chr(chrom_tok), start_tok, end_tok
-
-        if len(tokens) == 2:  # chrom + start only; synthesize end later
-            chrom_tok, start_tok = tokens
-            return clean_chr(chrom_tok), start_tok, None
-
-        return None
-
     parsed = [_parse_var_name(str(name)) for name in adata.var_names]
     if any(p is None for p in parsed):
         bad = adata.var_names[[i for i, p in enumerate(parsed) if p is None][0]]
         raise ValueError(
             "Cannot parse chrom/start/end from var_names. "
+            "Pass --modality to pick an ATAC/bin modality. "
             "Example failing entry: "
-            f"{bad!r}"
+            f"{bad!r}."
         )
 
     chrom = np.array([p[0] for p in parsed], dtype=object)
