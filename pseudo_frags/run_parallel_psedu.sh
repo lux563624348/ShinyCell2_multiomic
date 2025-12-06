@@ -3,10 +3,17 @@
 set -euo pipefail
 
 echo "Listing *raw.h5mu files under /data (sorted by size):"
-find /data -name "*raw.h5mu" -print0 \
-  | xargs -0 stat --format='%s %n' \
-  | sort -n \
-  | awk '{size=$1; $1=\"\"; printf \"%10s %s\n\", size, substr($0,2)}'
+raw_list=$(mktemp)
+find /data -name "*raw.h5mu" -print0 | while IFS= read -r -d '' f; do
+  stat --format='%s %n' "$f" >> "$raw_list"
+done
+if [[ -s "$raw_list" ]]; then
+  sort -n "$raw_list" \
+    | awk '{size=$1; $1=""; printf "%10s %s\n", size, substr($0,2)}'
+else
+  echo "No *raw.h5mu files found."
+fi
+rm -f "$raw_list"
 echo
 
 find /data -name "*processed.h5mu" -print0 |
