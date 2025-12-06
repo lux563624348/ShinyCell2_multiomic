@@ -31,4 +31,13 @@ for f in "${files[@]}"; do
 done
 
 
+# SLURM (interactive) example
 
+# Start an interactive session on WORKSPACES-CPU, node l004
+srun -p WORKSPACES-CPU --nodelist=l004 --time=06:00:00 --cpus-per-task=4 --mem=128G --pty bash
+
+# Then run the converter inside the allocated node
+docker run --rm \
+    -v /hive/hubmap/data/public/hubmap-data-products:/data \
+    h5mu_frag \
+    bash -c "bash /data/pseudo_fragments/ShinyCell2_multiomic/pseudo_frags/run_parallel_psedu.sh"
