@@ -104,6 +104,28 @@ def _to_int_array(values):
     return np.array([extract_int(v) for v in values], dtype=np.int64)
 
 
+def _parse_var_name(name: str):
+    """Best-effort parsing of a var name into (chrom, start, end_or_None)."""
+    name = str(name).strip()
+
+    # common pattern: chr1:0-500 or 1:0-500 or chr1 0 500
+    m = re.match(r"^([^:\s]+)[:\s]+([0-9eE.+-]+)[-:]+([0-9eE.+-]+)", name)
+    if m:
+        return clean_chr(m.group(1)), m.group(2), m.group(3)
+
+    # whitespace separated; take the last three tokens to be robust to prefixes
+    tokens = name.replace(",", " ").split()
+    if len(tokens) >= 3:
+        chrom_tok, start_tok, end_tok = tokens[-3], tokens[-2], tokens[-1]
+        return clean_chr(chrom_tok), start_tok, end_tok
+
+    if len(tokens) == 2:  # chrom + start only; synthesize end later
+        chrom_tok, start_tok = tokens
+        return clean_chr(chrom_tok), start_tok, None
+
+    return None
+
+
 # ----------------------------------------------------------------------
 # Modality and bin loading
 # ----------------------------------------------------------------------
@@ -115,7 +137,24 @@ def pick_modality(mdata, override: str | None):
         raise ValueError(f"Modality '{override}' not found.")
     if "atac_cell_by_bin" in mdata.mod:
         return mdata.mod["atac_cell_by_bin"]
-    return next(iter(mdata.mod.values()))
+
+    # try every modality until bin parsing succeeds
+    errors: dict[str, str] = {}
+    for key, ad in mdata.mod.items():
+        try:
+            load_correct_bins(ad)
+            print(f"Auto-selected modality '{key}' with parseable bin coordinates.")
+            return ad
+        except Exception as e:
+            errors[key] = str(e)
+
+    available = ", ".join(mdata.mod.keys())
+    raise ValueError(
+        "Could not find a modality with parseable bin coordinates. "
+        "Pass --modality to pick the correct ATAC/bin modality. "
+        f"Available modalities: {available}. "
+        f"Last errors: {errors}"
+    )
 
 
 def load_correct_bins(adata):
@@ -141,18 +180,24 @@ def load_correct_bins(adata):
         return chrom, start, end
 
     # Case 3: fallback parse var_names
-    names = adata.var_names.astype(str)
-    parts = np.array([s.split() for s in names])
-
-    if parts.shape[1] < 3:
+    parsed = [_parse_var_name(str(name)) for name in adata.var_names]
+    if any(p is None for p in parsed):
+        bad_idx = [i for i, p in enumerate(parsed) if p is None][0]
+        bad = adata.var_names[bad_idx]
         raise ValueError(
             "Cannot parse chrom/start/end from var_names. "
-            "Need at least 'chrom start end'"
+            "Example failing entry: "
+            f"{bad!r}. "
+            "Pass --modality to select the correct ATAC/bin modality."
         )
 
-    chrom = np.array([clean_chr(x) for x in parts[:, 0]], dtype=object)
-    start = _to_int_array(parts[:, 2])
-    end = start + 500
+    chrom = np.array([p[0] for p in parsed], dtype=object)
+    start = _to_int_array([p[1] for p in parsed])
+    raw_end = [p[2] for p in parsed]
+    if any(e is None for e in raw_end):
+        end = start + 500
+    else:
+        end = _to_int_array(raw_end)
 
     return chrom, start, end
 
