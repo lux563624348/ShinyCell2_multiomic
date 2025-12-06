@@ -141,18 +141,40 @@ def load_correct_bins(adata):
         return chrom, start, end
 
     # Case 3: fallback parse var_names
-    names = adata.var_names.astype(str)
-    parts = np.array([s.split() for s in names])
+    def _parse_var_name(name: str):
+        # common pattern: chr1:0-500 or 1:0-500
+        m = re.match(r"^([^:]+)[: ]+([0-9eE.+-]+)[-: ]+([0-9eE.+-]+)", name)
+        if m:
+            return clean_chr(m.group(1)), m.group(2), m.group(3)
 
-    if parts.shape[1] < 3:
+        # whitespace separated; take the last three tokens to be robust to prefixes
+        tokens = name.replace(",", " ").split()
+        if len(tokens) >= 3:
+            chrom_tok, start_tok, end_tok = tokens[-3], tokens[-2], tokens[-1]
+            return clean_chr(chrom_tok), start_tok, end_tok
+
+        if len(tokens) == 2:  # chrom + start only; synthesize end later
+            chrom_tok, start_tok = tokens
+            return clean_chr(chrom_tok), start_tok, None
+
+        return None
+
+    parsed = [_parse_var_name(str(name)) for name in adata.var_names]
+    if any(p is None for p in parsed):
+        bad = adata.var_names[[i for i, p in enumerate(parsed) if p is None][0]]
         raise ValueError(
             "Cannot parse chrom/start/end from var_names. "
-            "Need at least 'chrom start end'"
+            "Example failing entry: "
+            f"{bad!r}"
         )
 
-    chrom = np.array([clean_chr(x) for x in parts[:, 0]], dtype=object)
-    start = _to_int_array(parts[:, 2])
-    end = start + 500
+    chrom = np.array([p[0] for p in parsed], dtype=object)
+    start = _to_int_array([p[1] for p in parsed])
+    raw_end = [p[2] for p in parsed]
+    if any(e is None for e in raw_end):
+        end = start + 500
+    else:
+        end = _to_int_array(raw_end)
 
     return chrom, start, end
 
