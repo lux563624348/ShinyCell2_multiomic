@@ -193,26 +193,28 @@ def main():
     cells = adata.obs_names.to_numpy()
 
     print("Building fragment rows in memory for sorting ...")
-    rows = []
-    for r, c, v in zip(coo.row, coo.col, coo.data):
-        v = int(v)
-        if v > 0:
-            rows.append((chrom[c], start[c], end[c], cells[r], v))
+    unsorted_path = gz_path.with_name(gz_path.name + ".unsorted")
 
-    rows = np.array(rows, dtype=object)
+    print(f"Writing unsorted fragments → {unsorted_path}")
+    row_count = 0
+    with unsorted_path.open("w") as f:
+        for r, c, v in zip(coo.row, coo.col, coo.data):
+            v = int(v)
+            if v > 0:
+                f.write(f"{chrom[c]}\t{start[c]}\t{end[c]}\t{cells[r]}\t{v}\n")
+                row_count += 1
 
-    print("Sorting fragments by chrom/start/end for tabix ...")
-    order = np.lexsort((
-        rows[:, 2].astype(np.int64),  # end
-        rows[:, 1].astype(np.int64),  # start
-        rows[:, 0],                  # chrom
-    ))
-    rows = rows[order]
+    print("Sorting fragments by chrom/start/end for tabix using `sort` ...")
+    _require_cmd("sort")
+    with tmp_path.open("w") as sorted_f:
+        subprocess.run(
+            ["sort", "-k1,1", "-k2,2n", "-k3,3n", str(unsorted_path)],
+            stdout=sorted_f,
+            check=True,
+        )
 
-    print(f"Writing {rows.shape[0]} fragments → {tmp_path}")
-    with tmp_path.open("w") as f:
-        for chr_, s, e, cell, v in rows:
-            f.write(f"{chr_}\t{s}\t{e}\t{cell}\t{v}\n")
+    unsorted_path.unlink(missing_ok=True)
+    print(f"Wrote and sorted {row_count} fragments → {tmp_path}")
 
     print("Compressing + indexing ...")
     _bgzip_and_tabix(tmp_path, gz_path)
