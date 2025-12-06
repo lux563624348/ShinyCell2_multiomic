@@ -124,33 +124,9 @@ def _parse_var_name(name: str):
     return None
 
 
-def _mod_has_bin_metadata(adata) -> bool:
-    var = adata.var
-    if "interval" in var.columns:
-        return True
-    if "chrom" in var.columns and "start" in var.columns:
-        return True
-    # sample a handful of var_names to see if they look like coordinates
-    sample = [str(x) for x in adata.var_names[: min(50, adata.n_vars)]]
-    return any(_parse_var_name(s) for s in sample)
-
-
 # ----------------------------------------------------------------------
 # Modality and bin loading
 # ----------------------------------------------------------------------
-
-def pick_modality(mdata, override: str | None):
-    if override:
-        if override in mdata.mod:
-            return mdata.mod[override]
-        raise ValueError(f"Modality '{override}' not found.")
-    if "atac_cell_by_bin" in mdata.mod:
-        return mdata.mod["atac_cell_by_bin"]
-    for key, ad in mdata.mod.items():
-        if _mod_has_bin_metadata(ad):
-            print(f"Auto-selected modality '{key}' with bin coordinates.")
-            return ad
-    return next(iter(mdata.mod.values()))
 
 
 def load_correct_bins(adata):
@@ -195,6 +171,35 @@ def load_correct_bins(adata):
         end = _to_int_array(raw_end)
 
     return chrom, start, end
+
+
+def pick_modality(mdata, override: str | None):
+    if override:
+        if override in mdata.mod:
+            return mdata.mod[override]
+        raise ValueError(f"Modality '{override}' not found.")
+
+    # preferred conventional key
+    if "atac_cell_by_bin" in mdata.mod:
+        return mdata.mod["atac_cell_by_bin"]
+
+    # try every modality until bin parsing succeeds
+    errors: dict[str, str] = {}
+    for key, ad in mdata.mod.items():
+        try:
+            load_correct_bins(ad)
+            print(f"Auto-selected modality '{key}' with parseable bin coordinates.")
+            return ad
+        except Exception as e:  # keep the last error for reporting
+            errors[key] = str(e)
+
+    available = ", ".join(mdata.mod.keys())
+    raise ValueError(
+        "Could not find a modality with parseable bin coordinates. "
+        "Pass --modality to pick the correct ATAC/bin modality. "
+        f"Available modalities: {available}. "
+        f"Last errors: {errors}"
+    )
 
 
 # ----------------------------------------------------------------------
