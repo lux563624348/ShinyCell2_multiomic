@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-echo "Listing *.h5mu files under /data (sorted by size ascending):"
-mapfile -d '' raw_paths < <(find /data -name "*HT.h5mu" -print0)
+#echo "Listing *.h5mu files under /data (sorted by size ascending):"
+#mapfile -d '' raw_paths < <(find /data -name "*HT.h5mu" -print0)
 
 files=(
 /data/89dc5602-a511-464b-9c67-c874a8b20db7/LF_raw.h5mu  #pass
@@ -20,15 +20,15 @@ files=(
 
 for f in "${files[@]}"; do
     echo "Running: $f"
-    python check_h5mu_bins.py --h5mu "$f"
+    #python check_h5mu_bins.py --h5mu "$f"
 done
 
 
-if ((${#raw_paths[@]})); then
-  printf '%s\0' "${raw_paths[@]}" | xargs -0 ls -lhSr
+if ((${#files[@]})); then
+  printf '%s\0' "${files[@]}" | xargs -0 ls -lhSr
 
   mapfile -t sorted_paths < <(
-    printf '%s\0' "${raw_paths[@]}" \
+    printf '%s\0' "${files[@]}" \
       | xargs -0 stat --format='%s %n' \
       | LC_ALL=C sort -n -k1,1 \
       | awk '{size=$1; $1=""; print substr($0,2)}'
