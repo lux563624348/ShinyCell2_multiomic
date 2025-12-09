@@ -80,7 +80,7 @@ if (!inherits(archr_proj, "ArchRProject")) {
 ############################################
 
 archr_proj <- addIterativeLSI(
-    ArchRProj = archr_proj,
+    archr_proj,
     useMatrix = "TileMatrix",
     name = "IterativeLSI",
     iterations = 2,
@@ -89,8 +89,12 @@ archr_proj <- addIterativeLSI(
     dimsToUse = 1:5
 )
 
+if (!inherits(archr_proj, "ArchRProject")) {
+    stop("❌ ERROR: IterativeLSI returned an invalid ArchR project")
+}
+
 archr_proj <- addClusters(
-    ArchRProj = archr_proj, 
+    archr_proj, 
     reducedDims = "IterativeLSI",
     method = "Seurat",
     name = "Clusters"
@@ -105,7 +109,7 @@ archr_proj$Clusters <- factor(c(rep("C1", ceiling(n/2)), rep("C2", floor(n/2))))
 ############################################
 
 archr_proj <- addUMAP(
-    ArchRProj = archr_proj,
+    archr_proj,
     reducedDims = "IterativeLSI",
     nNeighbors = 2,
     force = TRUE
@@ -120,7 +124,7 @@ archr_proj@cellColData <- archr_proj@cellColData[valid_cells, , drop = FALSE]
 ############################################
 
 archr_proj <- saveArchRProject(
-    ArchRProj = archr_proj,
+    archr_proj,
     outputDirectory = proj_dir,
     load = TRUE
 )
@@ -129,7 +133,7 @@ archr_proj <- saveArchRProject(
 ## 8. Pseudo-peak generation
 ############################################
 
-featureDF <- getFeatures(ArchRProj = archr_proj, useMatrix = "TileMatrix")
+featureDF <- getFeatures(archr_proj, useMatrix = "TileMatrix")
 myPeaks <- GenomicRanges::GRanges(
     seqnames = featureDF@seqnames,
     ranges   = IRanges::IRanges(
@@ -139,8 +143,8 @@ myPeaks <- GenomicRanges::GRanges(
     name = featureDF$idx
 )
 
-archr_proj <- addPeakSet(ArchRProj = archr_proj, peakSet = myPeaks)
-archr_proj <- addPeakMatrix(ArchRProj = archr_proj)
+archr_proj <- addPeakSet(archr_proj, peakSet = myPeaks)
+archr_proj <- addPeakMatrix(archr_proj)
 
 ############################################
 ## 9. ShinyCell2 Setup
