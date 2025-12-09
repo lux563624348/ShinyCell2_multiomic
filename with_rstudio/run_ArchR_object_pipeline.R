@@ -65,18 +65,22 @@ ArrowFiles <- createArrowFiles(
 proj_dir <- file.path(output_dir, "ArchR_Project")
 message(">>> Creating ArchRProject at: ", proj_dir)
 
-proj <- ArchRProject(
+archr_proj <- ArchRProject(
     ArrowFiles = ArrowFiles,
     outputDirectory = proj_dir,
     copyArrows = TRUE
 )
 
+if (!inherits(archr_proj, "ArchRProject")) {
+    stop("❌ ERROR: Failed to create ArchR project (ArchRProj is NULL or invalid)")
+}
+
 ############################################
 ## 5. LSI / Clustering
 ############################################
 
-proj <- addIterativeLSI(
-    ArchRProj = proj,
+archr_proj <- addIterativeLSI(
+    ArchRProj = archr_proj,
     useMatrix = "TileMatrix",
     name = "IterativeLSI",
     iterations = 2,
@@ -85,38 +89,38 @@ proj <- addIterativeLSI(
     dimsToUse = 1:5
 )
 
-proj <- addClusters(
-    ArchRProj = proj, 
+archr_proj <- addClusters(
+    ArchRProj = archr_proj, 
     reducedDims = "IterativeLSI",
     method = "Seurat",
     name = "Clusters"
 )
 
 ## Overwrite clusters with two pseudo groups
-n <- nCells(proj)
-proj$Clusters <- factor(c(rep("C1", ceiling(n/2)), rep("C2", floor(n/2))))
+n <- nCells(archr_proj)
+archr_proj$Clusters <- factor(c(rep("C1", ceiling(n/2)), rep("C2", floor(n/2))))
 
 ############################################
 ## 6. UMAP
 ############################################
 
-proj <- addUMAP(
-    proj,
+archr_proj <- addUMAP(
+    ArchRProj = archr_proj,
     reducedDims = "IterativeLSI",
     nNeighbors = 2,
     force = TRUE
 )
 
 ## Fix cellColData row mismatch
-valid_cells <- intersect(proj$cellNames, rownames(proj@embeddings$UMAP$df))
-proj@cellColData <- proj@cellColData[valid_cells, , drop = FALSE]
+valid_cells <- intersect(archr_proj$cellNames, rownames(archr_proj@embeddings$UMAP$df))
+archr_proj@cellColData <- archr_proj@cellColData[valid_cells, , drop = FALSE]
 
 ############################################
 ## 7. Save project
 ############################################
 
-proj <- saveArchRProject(
-    ArchRProj = proj,
+archr_proj <- saveArchRProject(
+    ArchRProj = archr_proj,
     outputDirectory = proj_dir,
     load = TRUE
 )
@@ -125,7 +129,7 @@ proj <- saveArchRProject(
 ## 8. Pseudo-peak generation
 ############################################
 
-featureDF <- getFeatures(proj, useMatrix = "TileMatrix")
+featureDF <- getFeatures(ArchRProj = archr_proj, useMatrix = "TileMatrix")
 myPeaks <- GenomicRanges::GRanges(
     seqnames = featureDF@seqnames,
     ranges   = IRanges::IRanges(
@@ -135,8 +139,8 @@ myPeaks <- GenomicRanges::GRanges(
     name = featureDF$idx
 )
 
-proj <- addPeakSet(proj, peakSet = myPeaks)
-proj <- addPeakMatrix(proj)
+archr_proj <- addPeakSet(ArchRProj = archr_proj, peakSet = myPeaks)
+archr_proj <- addPeakMatrix(ArchRProj = archr_proj)
 
 ############################################
 ## 9. ShinyCell2 Setup
@@ -144,7 +148,7 @@ proj <- addPeakMatrix(proj)
 
 message(">>> Preparing ShinyCell2 metadata...")
 
-scConf2 <- createConfig(proj)
+scConf2 <- createConfig(archr_proj)
 
 ## Remove unwanted QC columns
 to_del <- c("ReadsInTSS", "ReadsInPromoter", "ReadsInBlacklist",
@@ -164,7 +168,7 @@ dir.create(shiny_dir, showWarnings = FALSE, recursive = TRUE)
 message(">>> Generating ShinyCell2 files at: ", shiny_dir)
 
 makeShinyFiles(
-    proj,
+    archr_proj,
     scConf = scConf2,
     dimred.to.use = "UMAP",
     bigWigGroup = c("Clusters"),

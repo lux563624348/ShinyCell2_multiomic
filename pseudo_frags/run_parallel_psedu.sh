@@ -9,7 +9,7 @@ files=(
 /data/89dc5602-a511-464b-9c67-c874a8b20db7/LF_raw.h5mu  #pass
 /data/80ebfff5-65a9-4991-8287-630b4b36891b/LO_raw.h5mu  #pass
 /data/3d150b98-f129-4a89-89e1-eb9c576ed2e0/RF_raw.h5mu  #pass
-#/data/855e6696-7c54-44ea-b176-ce28bdf41ad2/UT_raw.h5mu  #pass
+/data/855e6696-7c54-44ea-b176-ce28bdf41ad2/UT_raw.h5mu  #pass
 /data/bd092435-ce5f-4c54-80af-fb63c2d471e9/RO_raw.h5mu  #pass
 #/data/3f1906f0-f0e2-40c4-bda8-cb5f89d1d9d7/SP_raw.h5mu  #Found modalities: ['3f1906f0-f0e2-40c4-bda8-cb5f89d1d9d7_raw']
 #/data/3769013e-ccad-43be-9be1-577dbcc6d600/LI_raw.h5mu  # Found modalities: ['3769013e-ccad-43be-9be1-577dbcc6d600_raw']
