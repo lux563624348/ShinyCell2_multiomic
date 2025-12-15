@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     liblzma-dev \
     libgsl-dev \
-    build-essential \
     libbz2-dev \
     git \
     python3 \
@@ -26,6 +25,28 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# -------- Install bwtool --------
+# Requires libbeato + build tools and a few extra libs
+RUN apt-get update && apt-get install -y \
+        autoconf \
+        automake \
+        libtool \
+        zlib1g-dev \
+        libpng-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && cd /tmp \
+    && git clone https://github.com/CRG-Barcelona/libbeato.git \
+    && git clone https://github.com/CRG-Barcelona/bwtool.git \
+    && cd /tmp/libbeato \
+    && ./configure --prefix=/usr/local \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd /tmp/bwtool \
+    && ./configure --prefix=/usr/local \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd / \
+    && rm -rf /tmp/libbeato /tmp/bwtool
 
 # Install Shiny &  Server dependencies
 RUN R -e "reqPkg = c('shiny', 'shinyhelper','data.table','Matrix','DT','magrittr','ggplot2','ggrepel','hdf5r','ggdendro','gridExtra','ggpubr'); \
@@ -47,7 +68,6 @@ RUN R -e "install.packages('Seurat')"
 # RUN R -e "install.packages('Signac', repos='https://cran.rstudio.com/')"
 
 # Optional: anndata
-#RUN R -e "reticulate::py_install('anndata')"
 RUN pip3 install --no-cache-dir anndata
 
 # Install devtools + ShinyCell2
