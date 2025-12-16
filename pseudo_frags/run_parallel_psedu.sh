@@ -6,9 +6,9 @@ set -euo pipefail
 #mapfile -d '' raw_paths < <(find /data -name "*HT.h5mu" -print0)
 
 files=(
+/data/06881207-692c-4ec9-8255-5ffbafc92b4d/HT.h5mu
 /data/5fa94f5d-8ca0-4352-9a2f-21b42c75ece4/SI.h5mu
 /data/f79ce9ea-0a44-4374-b1e0-1979bdbfe0b0/LI.h5mu
-/data/06881207-692c-4ec9-8255-5ffbafc92b4d/HT.h5mu
 #/data/89dc5602-a511-464b-9c67-c874a8b20db7/LF_raw.h5mu  #pass
 #/data/80ebfff5-65a9-4991-8287-630b4b36891b/LO_raw.h5mu  #pass
 #/data/3d150b98-f129-4a89-89e1-eb9c576ed2e0/RF_raw.h5mu  #pass
